@@ -16,17 +16,7 @@ from fastapi import FastAPI
 from news_search import router as news_router
 from groq_review import router as groq_router
 
-app = FastAPI(
-    title="Fake News Detection API",
-    version="0.1.0"
-)
-
-app.include_router(news_router)
-app.include_router(groq_router)
-
-
 # Keep your existing CORS middleware and other endpoints.
-
 
 ROOT = Path(__file__).resolve().parent
 MODEL_PATH = ROOT / "model" / "fake_news_pipeline.joblib"
@@ -52,9 +42,14 @@ async def lifespan(_app: FastAPI):
     yield
 
 
-app = FastAPI(title="Fake News Detection API", version="0.1.0", lifespan=lifespan)
+app = FastAPI(
+    title="Fake News Detection API",
+    version="0.1.0",
+    lifespan=lifespan
+)
 
 app.include_router(news_router)
+app.include_router(groq_router)
 
 allowed_origins = [item.strip() for item in os.getenv(
     "ALLOWED_ORIGINS", "http://localhost:5173,http://127.0.0.1:5173"

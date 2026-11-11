@@ -10,3 +10,7 @@ backend/predictions.db
 backend/*.db
 .env
 .DS_Store
+
+# Training datasets
+backend/Fake.csv
+backend/True.csv
