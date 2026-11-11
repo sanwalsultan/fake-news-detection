@@ -1,0 +1,43 @@
+{
+  "accuracy": 0.9864,
+  "test_samples": 7819,
+  "training_samples": 31276,
+  "confusion_matrix_rows_actual_fake_real": [
+    [
+      3500,
+      81
+    ],
+    [
+      25,
+      4213
+    ]
+  ],
+  "classification_report": {
+    "FAKE": {
+      "precision": 0.9929078014184397,
+      "recall": 0.9773806199385646,
+      "f1-score": 0.9850830284266817,
+      "support": 3581.0
+    },
+    "REAL": {
+      "precision": 0.9811364694923148,
+      "recall": 0.9941009910335064,
+      "f1-score": 0.9875761837787155,
+      "support": 4238.0
+    },
+    "accuracy": 0.9864432791917125,
+    "macro avg": {
+      "precision": 0.9870221354553772,
+      "recall": 0.9857408054860355,
+      "f1-score": 0.9863296061026986,
+      "support": 7819.0
+    },
+    "weighted avg": {
+      "precision": 0.9865275859557312,
+      "recall": 0.9864432791917125,
+      "f1-score": 0.9864343511510608,
+      "support": 7819.0
+    }
+  },
+  "caution": "Dataset-split scores do not establish ability to fact-check new events."
+}
