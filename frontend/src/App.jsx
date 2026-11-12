@@ -9,27 +9,67 @@ import {
 import NewsSearch from './NewsSearch.jsx';
 
 // ============================================================
-// 1. API CONFIGURATION
+// 1. API CONFIGURATION AND NETWORK ERROR HANDLING
 // ============================================================
+// Local Vite uses localhost; deployed builds MUST configure VITE_API_URL.
+// Do not put GROQ_API_KEY or any secret in a VITE_ variable.
 const API = (
-  import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000'
+  (import.meta.env.VITE_API_URL || '').trim() ||
+  (import.meta.env.DEV ? 'http://127.0.0.1:8000' : '')
 ).replace(/\/+$/, '');
 
-const MAX_TEXT_LENGTH = 20000;
+// Use a single limit for the textarea, counter, and all API actions.
+const MAX_TEXT_LENGTH = 3000;
+const MIN_TEXT_LENGTH = 20;
 
 async function request(path, options = {}) {
-  const response = await fetch(`${API}${path}`, options);
-  const body = await response.json().catch(() => ({}));
-
-  if (!response.ok) {
-    const reason =
-      typeof body.detail === 'string'
-        ? body.detail
-        : JSON.stringify(body.detail || body);
-    throw new Error(reason || `Request failed (${response.status})`);
+  if (!API) {
+    throw new Error(
+      'Backend URL is not configured. Set VITE_API_URL to your public FastAPI HTTPS URL in Vercel Environment Variables, then redeploy.'
+    );
   }
 
-  return body;
+  const url = `${API}${path}`;
+  const { timeoutMs = 30000, ...fetchOptions } = options;
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+
+  try {
+    const response = await fetch(url, { ...fetchOptions, signal: controller.signal });
+    const contentType = response.headers.get('content-type') || '';
+    const isJson = contentType.includes('application/json');
+    const body = isJson
+      ? await response.json().catch(() => null)
+      : await response.text().catch(() => '');
+
+    if (!response.ok) {
+      const detail = body && typeof body === 'object'
+        ? (body.detail ?? body.message ?? body)
+        : body;
+      const message = typeof detail === 'string'
+        ? detail.slice(0, 300)
+        : detail ? JSON.stringify(detail).slice(0, 300) : response.statusText;
+      throw new Error(`API ${response.status}: ${message || 'Request failed'} (${path})`);
+    }
+
+    if (!isJson || body === null) {
+      throw new Error(`The server returned an invalid API response for ${path}. Check the VITE_API_URL setting.`);
+    }
+
+    return body;
+  } catch (err) {
+    if (err?.name === 'AbortError') {
+      throw new Error(`Request to ${path} timed out. Check the FastAPI server and its logs.`);
+    }
+    if (err instanceof TypeError) {
+      throw new Error(
+        `Cannot reach the FastAPI backend (${API}). Check that it is online, accessible over HTTPS from Vercel, and configured to allow your website's origin (CORS).`
+      );
+    }
+    throw err;
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 function percent(value) {
@@ -124,8 +164,13 @@ export default function App() {
     setError('');
     setResult(null);
 
-    if (text.trim().length < 20) {
-      setError('Please enter at least 20 characters of news text.');
+    if (text.trim().length < MIN_TEXT_LENGTH) {
+      setError(`Please enter at least ${MIN_TEXT_LENGTH} characters of news text.`);
+      return;
+    }
+
+    if (text.trim().length > MAX_TEXT_LENGTH) {
+      setError(`News text must be ${MAX_TEXT_LENGTH} characters or fewer.`);
       return;
     }
 
@@ -150,8 +195,13 @@ export default function App() {
   // 5. GROQ ANALYSIS: EXTRACT CLAIM, ISSUES AND SEARCH QUERY
   // ==========================================================
   async function runAIReview() {
-    if (text.trim().length < 20) {
-      setAiError('Enter at least 20 characters of news text.');
+    if (text.trim().length < MIN_TEXT_LENGTH) {
+      setAiError(`Enter at least ${MIN_TEXT_LENGTH} characters of news text.`);
+      return;
+    }
+
+    if (text.trim().length > MAX_TEXT_LENGTH) {
+      setAiError(`News text must be ${MAX_TEXT_LENGTH} characters or fewer.`);
       return;
     }
 
@@ -164,6 +214,7 @@ export default function App() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ text: text.trim() }),
+        timeoutMs: 45000,
       });
 
       if (!data.analysis) {
@@ -182,8 +233,10 @@ export default function App() {
   // ==========================================================
   async function searchRelatedNews() {
     // Prefer Groq's keyword query; otherwise use the article opening.
+    const headlineMatch = text.match(/(?:^|\n)\s*Headline:\s*(.+)/i);
     const query = (
       aiResult?.search_query ||
+      headlineMatch?.[1]?.trim() ||
       text.trim().split(/[\r\n.!?]/)[0].trim()
     ).slice(0, 200);
 
@@ -280,7 +333,7 @@ export default function App() {
                 value={text}
                 onChange={(event) => changeText(event.target.value)}
                 maxLength={MAX_TEXT_LENGTH}
-                rows={10}
+                rows={6}
                 placeholder="Paste a news article here..."
               />
               <div className="form-bottom">
@@ -293,7 +346,7 @@ export default function App() {
               <button
                 className="analyze-button"
                 type="submit"
-                disabled={busy || !health?.model_loaded}
+                disabled={busy || !health?.model_loaded || text.trim().length < MIN_TEXT_LENGTH}
               >
                 {busy ? 'Analyzing...' : 'Analyze News →'}
               </button>
@@ -363,7 +416,7 @@ export default function App() {
               className="analyze-button"
               type="button"
               onClick={runAIReview}
-              disabled={aiBusy || text.trim().length < 20}
+              disabled={aiBusy || text.trim().length < MIN_TEXT_LENGTH}
             >
               {aiBusy ? 'Reviewing with Groq...' : 'Review with Groq AI'}
             </button>
